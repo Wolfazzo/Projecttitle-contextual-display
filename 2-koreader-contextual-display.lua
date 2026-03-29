@@ -1,8 +1,8 @@
--- Koreader: Contextual Display Mode (Home vs Subfolders)
+-- ProjectTitle: Contextual Display Mode (Home vs Subfolders)
 -- Adds menu options to set a different display mode for the home folder and subfolders.
 -- The mode switches automatically when navigating between home and subfolders.
 -- Settings are persistent via G_reader_settings under the "pt_contextual_display" key.
---compatible with koreader vanilla and projecttitle plugin
+--
 -- Injected at the top of the ProjectTitle display-mode menu:
 --   [✓] Use different mode for Home and subfolders
 --       Home folder mode ▶  (enabled when above is checked)
@@ -72,8 +72,27 @@ local function applyContextualMode(path)
         logger.dbg(LOGPFX, "In subfolder → applying subfolder mode:", target_mode)
     end
 
+    -- Guard: if the file chooser's item_table is not yet populated or is empty (e.g. we are
+    -- inside FileChooser:changeToPath→onMenuSelect, before updateItems has run),
+    -- defer the mode switch to the next UI tick so that refreshFileManagerInstance
+    -- does not call switchItemTable on an empty item_table and crash on index 0.
+    local UIManager = require("ui/uimanager")
+    local fc = fm.file_chooser
+    if fc and (not fc.item_table or #fc.item_table == 0) then
+        logger.dbg(LOGPFX, "item_table not ready or empty, deferring mode switch to nextTick")
+        UIManager:nextTick(function()
+            -- Re-fetch fm in case the instance changed between ticks
+            local fm2 = FileManager.instance
+            if fm2 and fm2.coverbrowser and fm2.file_chooser and fm2.file_chooser.item_table and #fm2.file_chooser.item_table > 0 then
+                fm2.coverbrowser:setupFileManagerDisplayMode(target_mode)
+            end
+        end)
+        return
+    end
+
     fm.coverbrowser:setupFileManagerDisplayMode(target_mode)
 end
+
 
 -- ────────────────────────────────────────────────────────────
 -- Helper: inject contextual-mode entries into CoverBrowser's menu
